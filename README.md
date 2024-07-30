@@ -1,42 +1,60 @@
-This project is created for PDF-scans handwritten Russian character recognition.
+# EGE_blanks_parser
 
-# Repository structure:
-- ./models # Includes pretrained and fine-tuned Paddle-based OCR model
-- ./src # Includes utility code responsible for PDF data extraction, preprocessing and recognition
-- ./scripts # Includes .sh scripts for model training and inference
-- ./configs # Includes .yaml model configuration, default paths PATHS.txt file
-- ./outputs # Includes original, preprocessed and cropped images and a csv file containing recognition results
-  
-# Model inference:
-Firsly, confirm that you have edited default SCANS_FOLDER_PATH from PATHS.txt file in the ./configs folder as
-it now should point to your scanns path directory.
+<a target="_blank" href="https://cookiecutter-data-science.drivendata.org/">
+    <img src="https://img.shields.io/badge/CCDS-Project%20template-328F97?logo=cookiecutter" />
+</a>
 
-For use of default pretrained and fine-tuned model call ./scripts/inference.sh which will automatically 
-fetch latest file from the SCANS_FOLDER_PATH config parameter and place all the outputs in the output/folder
+Performs an OCR table recognition tasks specifically on EGE-exam standardized blanks
 
-# Custom model inference: 
-Firsly, confirm that you have edited default CHARACTER_DICT_PATH, INFERENCE_MODEL_PATH from PATHS.txt file in the ./configs folder
-as they now should point to your models dictionary and your models parameters accordingly.
+## Project Organization
 
-For use of custom Paddle-compatible model, place the model (including pdparameters and all files alongside) in the
-./model directory
+```
+├── LICENSE            <- Open-source license if one is chosen
+├── targets.py 	       <- .py file providing convenient commands like "invoke requirements", "invoke create_environment"
+├── README.md          <- The top-level README for developers using this project.
+├── data
+│   ├── external       <- Data from third party sources.
+│   ├── interim        <- Intermediate data that has been transformed.
+│   ├── processed      <- The final, canonical data sets for modeling.
+│   └── raw            <- The original, immutable data dump.
+│
+├── docs               <- A default mkdocs project; see mkdocs.org for details
+│
+├── models             <- Trained and serialized models, model predictions, or model summaries
+│
+├── notebooks          <- Jupyter notebooks. Naming convention is a number (for ordering),
+│                         the creator's initials, and a short `-` delimited description, e.g.
+│                         `1.0-jqp-initial-data-exploration`.
+│
+├── pyproject.toml     <- Project configuration file with package metadata for ege_parser
+│                         and configuration for tools like black
+│
+├── references         <- Data dictionaries, manuals, and all other explanatory materials.
+│
+├── reports            <- Generated analysis as HTML, PDF, LaTeX, etc.
+│   └── figures        <- Generated graphics and figures to be used in reporting
+│
+├── requirements_file  <- The requirements file for reproducing the analysis environment, either 
+│			  a Pipfile, requirements.txt or environment.yml file
+│
+└── ege_parser                <- Source code for use in this project.
+    │
+    ├── __init__.py    <- Makes ege_parser a Python module
+    │
+    ├── data           <- Scripts to download or generate data
+    │   └── make_dataset.py
+    │
+    ├── features       <- Scripts to turn raw data into features for modeling
+    │   └── build_features.py
+    │
+    ├── models         <- Scripts to train models and then use trained models to make
+    │   │                 predictions
+    │   ├── predict_model.py
+    │   └── train_model.py
+    │
+    └── visualization  <- Scripts to create exploratory and results oriented visualizations
+        └── visualize.py
+```
 
-All further steps are same as for default model inference (see previous section)
-
-# Model training 
-To perform default model training, which can significantly increase recognition result, place your training data folder to the ./train_data directory and 
-replace the default TRAINING_DATA_PATH from PATHS.txt file in the ./configs folrder.
-
-Originally training data can be downloaded by the link here: https://www.kaggle.com/datasets/constantinwerner/cyrillic-handwriting-dataset?resource=download
-
-Notice, that the training data labels must be specified in a txt. file as follows: ![image](https://github.com/PaddlePaddle/PaddleOCR/raw/release/2.7/doc/datasets/icdar_rec.png)
-
-
-You also may want to edit ./configs/default_model.yaml configuration file to control traninig learning rate, batch size, optimizer parameters and etc.
-All avaliable changes are described here... # TODO
-Then you can activate ./scripts/train_model.sh script and wait for training to be completed
-
-# Custom model training 
-To perform your custom model training, you should edit #TODO  
-
+--------
 

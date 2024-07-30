@@ -1,0 +1,17 @@
+# Absolute scan path to fetch new pdf's/images
+SCAN_PATH: 'C:\\Users\\kalmy\\OneDrive\\Рабочий стол\\Scans_folder'
+
+# Output folder name
+SAVE_FOLDER: '/output'
+
+# PPocr and PPStructure inference models
+DET_MODEL_DIR:        './models/inference/ch_ppocr_mobile_v2.0_det_infer'
+REC_MODEL_DIR:        './models/inference/cyrillic_PP-OCRv3_rec_infer'
+TABLE_MODEL_DIR:      './models/inference/en_ppocr_mobile_v2.0_table_structure_infer'
+
+# PPocr and PPStructure models dictionaries
+REC_CHAR_DICT_PATH:   './utils/dicts/cyrillic_dict.txt'
+TABLE_CHAR_DICT_PATH: './utils/dicts/table_structure_dict.txt'
+
+# Font path to draw OCR results
+FONT_PATH : './utils/fonts/cyrillic.ttf'
