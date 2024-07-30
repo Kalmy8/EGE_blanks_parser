@@ -1,6 +1,8 @@
-from invoke import task, Collection
+# mypy: ignore-errors
 import os
 import shutil
+
+from invoke import Collection, task
 
 PROJECT_NAME = "EGE_blanks_parser"
 PYTHON_VERSION = "3.10"
@@ -22,6 +24,7 @@ def requirements(ctx):
     elif DEPENDENCY_FILE == "Pipfile":
         ctx.run("pipenv install")
 
+
 @task
 def clean(ctx):
     """Delete all compiled Python files"""
@@ -33,6 +36,7 @@ def clean(ctx):
             if dir == "__pycache__":
                 shutil.rmtree(os.path.join(root, dir))
 
+
 @task
 def lint(ctx):
     """Lint using flake8 and black (use `invoke format` to do formatting)"""
@@ -40,10 +44,12 @@ def lint(ctx):
     ctx.run(f"isort --check --diff --profile black {MODULE_NAME}")
     ctx.run(f"black --check --config pyproject.toml {MODULE_NAME}")
 
+
 @task
 def format(ctx):
     """Format source code with black"""
     ctx.run(f"black --config pyproject.toml {MODULE_NAME}")
+
 
 @task
 def sync_data_down(ctx):
@@ -61,6 +67,7 @@ def sync_data_down(ctx):
             bucket = DATASET_STORAGE["gcs"].get("bucket", "")
             ctx.run(f"gsutil -m rsync -r gs://{bucket}/data/ data/")
 
+
 @task
 def sync_data_up(ctx):
     """Upload Data to storage system"""
@@ -77,6 +84,7 @@ def sync_data_up(ctx):
             bucket = DATASET_STORAGE["gcs"].get("bucket", "")
             ctx.run(f"gsutil -m rsync -r data/ gs://{bucket}/data/")
 
+
 @task
 def create_environment(ctx):
     """Set up python interpreter environment"""
@@ -91,7 +99,8 @@ def create_environment(ctx):
         print(f">>> New virtualenv created. Activate with:\nsource {PROJECT_NAME}/bin/activate")
     elif ENVIRONMENT_MANAGER == "pipenv":
         ctx.run(f"pipenv --python {PYTHON_VERSION}")
-        print(f">>> New pipenv created. Activate with:\npipenv shell")
+        print(">>> New pipenv created. Activate with:\npipenv shell")
+
 
 @task
 def data(ctx):
@@ -99,12 +108,14 @@ def data(ctx):
     requirements(ctx)
     ctx.run(f"{PYTHON_INTERPRETER} {MODULE_NAME}/dataset.py")
 
+
 @task
 def help(ctx):
     """Display help message"""
     print("Available tasks:")
-    for task in ctx.collection:
-        print(f"{task.name}: {task.help}")
+    for avaliable_tasks in ctx.collection:
+        print(f"{avaliable_tasks.name}: {avaliable_tasks.help}")
+
 
 # Aliases for some common tasks
 ns = Collection()

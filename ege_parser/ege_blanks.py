@@ -1,87 +1,96 @@
 from __future__ import annotations
 
-from paddleocr import PaddleOCR, draw_ocr
-from paddleocr import PPStructure, save_structure_res, draw_structure_result
-import cv2 as cv2
+from copy import deepcopy
+
 import numpy as np
-from src.utils import DataLoader
-from src.utils import Preprocessing
-import yaml
-from PIL import Image
-from pathlib import Path
-import os
-# Upload config file constants
-with open('./configs/config.yaml', 'r', encoding='utf-8') as file:
-    config = yaml.safe_load(file)
+from dotenv import load_dotenv
+from paddleocr import PaddleOCR
 
-SCAN_PATH = Path(config['SCAN_PATH'])
-SAVE_FOLDER = config['SAVE_FOLDER']
-DET_MODEL_DIR = config['DET_MODEL_DIR']
-REC_MODEL_DIR = config['REC_MODEL_DIR']
-TABLE_MODEL_DIR = config['TABLE_MODEL_DIR']
-REC_CHAR_DICT_PATH = config['REC_CHAR_DICT_PATH']
-TABLE_CHAR_DICT_PATH = config['TABLE_CHAR_DICT_PATH']
-FONT_PATH = config['FONT_PATH']
+from ege_parser.preprocessing import BinaryThreshold, ConvertToGrayscale
+from ege_parser.utils import (
+    Config,
+    DataLoader,
+    ExtractGridEntries,
+    ExtractImageGrid,
+    OcrResult,
+    ReconstructAndSupress,
+)
 
-class EGE_processor(Preprocessing):
-    def __call__(self, np_images : list | np.array) -> list | np.array:
-        if isinstance(np_images, np.ndarray):
-            return self._process_single_image(np_images)
-        elif isinstance(np_images, list):
-            return [self._process_single_image(np_image) for np_image in np_images]
-        else:
-            raise TypeError("Input must be a numpy array or a list of numpy arrays")
 
-    def _process_single_image(self, np_image):
-        np_image = Preprocessing.convert_to_grayscale(np_image)
-        np_image = Preprocessing.binary_threshold(np_image, n_neigbours=11, constant=2)
+class Preprocessor:
+    """
+    Handle EGE-blanks related preprocessing tasks
+    """
 
-        # image_boundaries = Preprocessing.extract_image_grid(np_image,
-        #                                                     horiz_kernel_divider=10,
-        #                                                     vertic_kernel_divider=30,
-        #                                                     horiz_closing_iterations=3,
-        #                                                     vertical_closing_iterations=1)
+    def __init__(self):
+        self.to_gray = ConvertToGrayscale()
+        self.binarize = BinaryThreshold(n_neighbours=21, constant=40)
 
-        image_boundaries = cv2.imread('./ege_grid.jpg')
-
-        # Convert the image to grayscale
-        image_boundaries = cv2.cvtColor(image_boundaries, cv2.COLOR_BGR2GRAY)
-
-        # Apply binary thresholding
-        ret, image_boundaries = cv2.threshold(image_boundaries, 127, 255, cv2.THRESH_BINARY)
-
-        np_image = Preprocessing.extract_grid_entries(np_image, image_boundaries, verbose = True)
+    def __call__(self, np_image: np.array) -> np.array:
+        np_image = self.to_gray(np_image)
+        np_image = self.binarize(np_image)
 
         return np_image
 
 
+GridExtractor = ExtractImageGrid(
+    horiz_kernel_divider=10,
+    vertic_kernel_divider=30,
+    horiz_closing_iterations=3,
+    vertical_closing_iterations=1,
+)
+
+
+class MyPipline:
+    def __init__(self, config: Config):
+        self.config = config
+        self.load_data = DataLoader(config)
+        self.preprocessing = Preprocessor()
+
+        self.grid_entries = ExtractGridEntries("inseparable", verbose=False)
+        self.ocr_engine = PaddleOCR(lang="en")
+        self.reconstruction = ReconstructAndSupress(verbose=True, iou_threshold=0.1)
+
+    def process(self):
+        data = self.load_data()
+
+        # Preprocess
+        preprocessed = deepcopy(data)
+        for filename, page_list in data.items():
+            for page in page_list:
+                preprocessed[filename][page] = self.preprocessing(data[filename][page])
+
+        # Perform an OCR recognition task
+        ocr = deepcopy(preprocessed)
+        for filename, page_list in preprocessed.items():
+            for page in page_list:
+                ocr[filename][page] = OcrResult(self.ocr_engine.ocr(preprocessed[filename][page]))
+
+        # Expand boxes
+        output_arrays = deepcopy(data)
+        for filename, page_list in ocr.items():
+            for page in page_list:
+                output_arrays[filename][page] = self.reconstruction(
+                    preprocessed[filename][page], ocr[filename][page]
+                )  # mypy : ignore
+
+        return output_arrays
+
+
 def main():
+    # Loads required environmental variables
+    load_dotenv()
+    myconfig = Config()
+    myconfig.validate()
 
-    # Load data
-    data_loader = DataLoader()
-    data = data_loader(SCAN_PATH)
+    # Initialize constructed Pipline
+    mypipline = MyPipline(myconfig)
 
-    # Preprocess images
-    engine = EGE_processor()
-    data = dict((filename, engine(image)) for filename, image in data.items())
+    # Invoke initialized Pipline
+    output_arrays = mypipline.process()
 
-    # Initialize OCR engine
-    table_engine = PPStructure(det_model_dir=DET_MODEL_DIR,
-                               rec_model_dir=REC_MODEL_DIR,
-                               table_model_dir=TABLE_MODEL_DIR,
-                               rec_char_dict_path=REC_CHAR_DICT_PATH,
-                               table_char_dict_path=TABLE_CHAR_DICT_PATH,
-                               image_orientation=True,
-                               layout=True, show_log=True)
+    print(output_arrays)
 
-    for img in imgs:
-        result = table_engine(img)
-        save_structure_res(result, SCAN_PATH.joinpath(SAVE_FOLDER), file_path.name)
 
-        image = Image.fromarray(img).convert('RGB')
-        im_show = draw_structure_result(image, result, font_path=FONT_PATH)
-        im_show = Image.fromarray(im_show)
-        im_show.show()
-
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
