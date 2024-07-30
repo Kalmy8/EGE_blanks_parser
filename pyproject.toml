@@ -6,26 +6,17 @@ build-backend = "flit_core.buildapi"
 name = "ege_parser"
 version = "0.0.1"
 description = "Performs an OCR table rrecognition tasks specifically on EGE-exam standartized blanks"
-authors = [
-  { name = "Kalmy8" },
-]
+authors = [{ name = "Kalmy8" }]
 
 readme = "README.md"
 classifiers = [
-    "Programming Language :: Python :: 3",
-    
-]
-requires-python = "~=3.10"
+    "Programming Language :: Python :: 3", ]
+requires-python = "~=3.9"
 
 [tool.black]
 line-length = 99
 include = '\.pyi?$'
-exclude = '''
-/(
-    \.git
-  | \.venv
-)/
-'''
+exclude = '''\.git|\.venv'''
 
 [tool.ruff.lint.isort]
 known_first_party = ["ege_parser"]
@@ -40,7 +31,7 @@ skip_glob = ["**/migrations/*", "**/settings/*"]
 src_paths = ["./ege_parser"]
 
 [tool.mypy]
-mypy_path = ege_parser
+mypy_path = "./ege_parser"
 check_untyped_defs = true
 disallow_any_generics = true
 ignore_missing_imports = true
