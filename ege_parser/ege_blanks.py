@@ -2,158 +2,105 @@ from __future__ import annotations
 
 import os
 import shutil
-from pathlib import Path
 
-import cv2 as cv2
 import numpy as np
 from dotenv import load_dotenv
-from paddleocr import PPStructure, draw_structure_result, save_structure_res
+from paddleocr import PaddleOCR
 from PIL import Image
 
-from ege_parser.utils import DataLoader, Preprocessing
+from ege_parser.preprocessing import BinaryThreshold, ConvertToGrayscale
+from ege_parser.utils import (
+    Config,
+    DataLoader,
+    ExtractGridEntries,
+    ExtractImageGrid,
+    VisualizeBoundingBoxes,
+)
 
 
-# Function to check and load missing environment variables
-def check_and_load_env_variables(required_env_variables):
-    # Check for missing environment variables
-    missing_args = [arg for arg in required_env_variables if os.getenv(arg) is None]
-
-    if missing_args:
-        # Print missing variables
-        for arg in missing_args:
-            print(f"Environment variable {arg} is not set")
-
-        # Load environment variables from .env file
-        print("Loading environmental variables from .env file...")
-        load_dotenv()
-
-        # Check again for missing variables after loading .env file
-        missing_args_after_load = [arg for arg in required_env_variables if os.getenv(arg) is None]
-
-        if missing_args_after_load:
-            # Print missing variables after attempting to load .env file
-            for arg in missing_args_after_load:
-                print(f"Environment variable {arg} is missing in .env file")
-
-            print("Please provide all required environmental variables and check the .env file")
-            raise ValueError("Missing required environmental variables")
-
-
-# Required variables list
-required_env_variables = [
-    "SCAN_PATH",
-    "SAVE_FOLDER",
-    "DET_MODEL_DIR",
-    "REC_MODEL_DIR",
-    "TABLE_MODEL_DIR",
-    "REC_CHAR_DICT_PATH",
-    "TABLE_CHAR_DICT_PATH",
-    "FONT_PATH",
-]
-
-
-class EGE_processor(Preprocessing):
+class Preprocessor:
     """
-    Child of Preprocessing class tuned to handle EGE-blanks related preprocessing tasks
+    Handle EGE-blanks related preprocessing tasks
     """
 
-    def __call__(
-        self, np_images: list[np.array], image_boundaries_reference: str | None = None
-    ) -> list[np.array]:
-        # Modify each entry of the original array
-        return [
-            self._process_single_image(np_image, image_boundaries_reference)
-            for np_image in np_images
-        ]
+    def __init__(self):
+        self.to_gray = ConvertToGrayscale()
+        self.binarize = BinaryThreshold(n_neighbours=21, constant=40)
 
-    def _process_single_image(
-        self, np_image: np.array, image_template_path: str | None = None
-    ) -> np.array:
-        np_image = Preprocessing.convert_to_grayscale(np_image)
-        np_image = Preprocessing.binary_threshold(np_image, n_neigbours=21, constant=40)
-
-        # Extract image boundaries automatically if they are not provided
-        if image_template_path is not None:
-            try:
-                image_boundaries = cv2.imread(image_template_path)
-
-                # Preprocess template image
-                image_boundaries = cv2.cvtColor(image_boundaries, cv2.COLOR_BGR2GRAY)
-            except Exception as exc:
-                print(f"Can not upload {image_template_path} image_boundaries template\n", exc)
-
-        else:
-            image_boundaries = Preprocessing.extract_image_grid(
-                np_image,
-                horiz_kernel_divider=10,
-                vertic_kernel_divider=30,
-                horiz_closing_iterations=3,
-                vertical_closing_iterations=1,
-            )
-
-        # Binarize template image
-        ret, image_boundaries = cv2.threshold(image_boundaries, 127, 255, cv2.THRESH_BINARY)
-
-        # Extract grid entries from the provided image
-        np_image = Preprocessing.extract_grid_entries(
-            np_image, image_boundaries, mode="inseparable", verbose=False
-        )
+    def __call__(self, np_image: np.array) -> np.array:
+        np_image = self.to_gray(np_image)
+        np_image = self.binarize(np_image)
 
         return np_image
 
 
+GridExtractor = ExtractImageGrid(
+    horiz_kernel_divider=10,
+    vertic_kernel_divider=30,
+    horiz_closing_iterations=3,
+    vertical_closing_iterations=1,
+)
+
+
+class MyPipline:
+    def __init__(self, config: Config):
+        self.config = config
+        self.load_data = DataLoader(config)
+        self.preprocessing = Preprocessor()
+        self.grid_entries = ExtractGridEntries("inseparable", verbose=False)
+        self.ocr_engine = PaddleOCR(lang="en")
+        # self.reconstruction = Reconstruct
+
+    def process(self):
+        x = self.load_data()
+
+        x = {
+            filename: [self.preprocessing(image) for image in listed_images]
+            for filename, listed_images in x.items()
+        }
+
+        image_boundaries = np.array(Image.open("./data/external/ege_grid.jpg"))
+        image_boundaries = self.preprocessing(image_boundaries)
+
+        x = {
+            filename: [self.grid_entries(image, image_boundaries) for image in listed_images]
+            for filename, listed_images in x.items()
+        }
+
+        # x = self.reconstruction(x)
+
+        # Create the reports' directory, If it exists, delete it and recreate
+        SAVE_FOLDER = self.config.SCAN_PATH / self.config.SAVE_FOLDER
+        if SAVE_FOLDER.exists():
+            shutil.rmtree(SAVE_FOLDER)
+
+        SAVE_FOLDER.mkdir(parents=True, exist_ok=False)
+
+        for filename, images_list in x.items():
+            # Assume every filename can have multiple images (like a multi-page PDF)
+            for page, image in enumerate(images_list):
+                result = self.ocr_engine.ocr(image)
+                image_boxes = VisualizeBoundingBoxes()(image, result)
+
+                dir_path = SAVE_FOLDER / filename / f"page_{page}"
+                dir_path.mkdir(parents=True, exist_ok=True)
+
+                image_boxes = Image.fromarray(image_boxes)
+                save_path = os.path.join(dir_path, "ocr_result.jpg")
+                image_boxes.save(save_path)
+
+
 def main():
-    check_and_load_env_variables(required_env_variables)
+    # Loads required environmental variables
+    load_dotenv()
+    myconfig = Config()
+    myconfig.validate()
 
-    SCAN_PATH = Path(str(os.getenv("SCAN_PATH")))
-    SAVE_FOLDER = Path(str(os.getenv("SAVE_FOLDER")))
-    DET_MODEL_DIR = Path(str(os.getenv("DET_MODEL_DIR")))
-    REC_MODEL_DIR = Path(str(os.getenv("REC_MODEL_DIR")))
-    TABLE_MODEL_DIR = Path(str(os.getenv("TABLE_MODEL_DIR")))
-    REC_CHAR_DICT_PATH = Path(str(os.getenv("REC_CHAR_DICT_PATH")))
-    TABLE_CHAR_DICT_PATH = Path(str(os.getenv("TABLE_CHAR_DICT_PATH")))
-    FONT_PATH = Path(str(os.getenv("FONT_PATH")))
+    # Initialize constructed Pipline
+    mypipline = MyPipline(myconfig)
 
-    # Load data
-    data_loader = DataLoader()
-    data = data_loader(SCAN_PATH)
-
-    # Preprocess images
-    engine = EGE_processor()
-    data = dict((filename, engine(image)) for filename, image in data.items())
-    # , './data/external/ege_grid.jpg'
-    # Initialize OCR engine
-    table_engine = PPStructure(
-        det_model_dir=DET_MODEL_DIR.__str__(),
-        rec_model_dir=REC_MODEL_DIR.__str__(),
-        table_model_dir=TABLE_MODEL_DIR.__str__(),
-        rec_char_dict_path=REC_CHAR_DICT_PATH.__str__(),
-        table_char_dict_path=TABLE_CHAR_DICT_PATH.__str__(),
-        image_orientation=True,
-        layout=True,
-        show_log=True,
-    )
-
-    # Create the reports directory if it doesn't exist
-    SAVE_FOLDER.mkdir(parents=True, exist_ok=True)
-
-    for filename, images_list in data.items():
-        dir_path = SAVE_FOLDER / filename
-
-        if dir_path.exists():
-            # If it exists, delete it and recreate
-            shutil.rmtree(dir_path)
-            dir_path.mkdir(exist_ok=True)
-
-        # Assume every filename can have multiple images (like a multi-page PDF)
-        for page, image in enumerate(images_list):
-            result = table_engine(image)
-            save_structure_res(result, SCAN_PATH.joinpath(SAVE_FOLDER), f"{filename}_page_{page}")
-
-            image = Image.fromarray(image).convert("RGB")
-            im_show = draw_structure_result(image, result, font_path=FONT_PATH)
-            im_show = Image.fromarray(im_show)
-            im_show.show()
+    # Invoke initialized Pipline
+    mypipline.process()
 
 
 if __name__ == "__main__":
