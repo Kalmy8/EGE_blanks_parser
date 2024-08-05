@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-import os
-import shutil
+from copy import deepcopy
 
 import numpy as np
 from dotenv import load_dotenv
@@ -14,7 +13,8 @@ from ege_parser.utils import (
     DataLoader,
     ExtractGridEntries,
     ExtractImageGrid,
-    VisualizeBoundingBoxes,
+    OcrResult,
+    ReconstructAndSupress,
 )
 
 
@@ -49,45 +49,62 @@ class MyPipline:
         self.preprocessing = Preprocessor()
         self.grid_entries = ExtractGridEntries("inseparable", verbose=False)
         self.ocr_engine = PaddleOCR(lang="en")
-        # self.reconstruction = Reconstruct
+        self.reconstruction = ReconstructAndSupress(verbose=True, iou_threshold=0.1)
 
     def process(self):
-        x = self.load_data()
+        data = self.load_data()
 
-        x = {
-            filename: [self.preprocessing(image) for image in listed_images]
-            for filename, listed_images in x.items()
-        }
+        # Preprocess
+        preprocessed = deepcopy(data)
+        for filename, page_list in data.items():
+            for page in page_list:
+                preprocessed[filename][page] = self.preprocessing(data[filename][page])
 
         image_boundaries = np.array(Image.open("./data/external/ege_grid.jpg"))
         image_boundaries = self.preprocessing(image_boundaries)
 
-        x = {
-            filename: [self.grid_entries(image, image_boundaries) for image in listed_images]
-            for filename, listed_images in x.items()
-        }
+        # Extract grid entries
+        extracted = deepcopy(preprocessed)
+        for filename, page_list in preprocessed.items():
+            for page in page_list:
+                extracted[filename][page] = self.grid_entries(
+                    preprocessed[filename][page], image_boundaries
+                )
 
-        # x = self.reconstruction(x)
+        # Perform an OCR recognition task
+        ocr = deepcopy(extracted)
+        for filename, page_list in extracted.items():
+            for page in page_list:
+                ocr[filename][page] = OcrResult(self.ocr_engine.ocr(extracted[filename][page]))
+
+        # Expand boxes
+        for filename, page_list in ocr.items():
+            for page in page_list:
+                self.reconstruction(
+                    extracted[filename][page], ocr[filename][page]
+                )  # mypy : ignore
 
         # Create the reports' directory, If it exists, delete it and recreate
-        SAVE_FOLDER = self.config.SCAN_PATH / self.config.SAVE_FOLDER
-        if SAVE_FOLDER.exists():
-            shutil.rmtree(SAVE_FOLDER)
+        # SAVE_FOLDER = self.config.SCAN_PATH / self.config.SAVE_FOLDER
+        # if SAVE_FOLDER.exists():
+        #    shutil.rmtree(SAVE_FOLDER)
 
-        SAVE_FOLDER.mkdir(parents=True, exist_ok=False)
 
-        for filename, images_list in x.items():
-            # Assume every filename can have multiple images (like a multi-page PDF)
-            for page, image in enumerate(images_list):
-                result = self.ocr_engine.ocr(image)
-                image_boxes = VisualizeBoundingBoxes()(image, result)
-
-                dir_path = SAVE_FOLDER / filename / f"page_{page}"
-                dir_path.mkdir(parents=True, exist_ok=True)
-
-                image_boxes = Image.fromarray(image_boxes)
-                save_path = os.path.join(dir_path, "ocr_result.jpg")
-                image_boxes.save(save_path)
+#
+# SAVE_FOLDER.mkdir(parents=True, exist_ok=False)
+#
+# for filename, images_list in x.items():
+#    # Assume every filename can have multiple images (like a multi-page PDF)
+#    for page, image in enumerate(images_list):
+#        result = self.ocr_engine.ocr(image)
+#        image_boxes = VisualizeBoundingBoxes()(image, result)
+#
+#        dir_path = SAVE_FOLDER / filename / f"page_{page}"
+#        dir_path.mkdir(parents=True, exist_ok=True)
+#
+#        image_boxes = Image.fromarray(image_boxes)
+#        save_path = os.path.join(dir_path, "ocr_result.jpg")
+#        image_boxes.save(save_path)
 
 
 def main():

@@ -1,11 +1,22 @@
 from __future__ import annotations
 
 import os
+from copy import deepcopy
 from pathlib import Path
+from typing import Any
 
 import cv2 as cv2
 import fitz
 import numpy as np
+import tensorflow as tf
+from PIL import Image
+
+
+class OcrResult:
+    def __init__(self, result: list[Any]):
+        self.boxes = [res[0] for res in result[0]]
+        self.txt = [res[1][0] for res in result[0]]
+        self.scores = [res[1][1] for res in result[0]]
 
 
 class Config:
@@ -43,23 +54,113 @@ class Config:
             )
 
 
-# class Reconstruct():
-#     def __call__(self):
-#         horiz_boxes = []
-#         vert_boxes = []
-#         for box in boxes:
-#             x_h, x_v = 0, int(box[0][0])
-#             y_h, y_v = int(box[0][1]), 0
-#             width_h, width_v = img_width, int(box[2][0] - box[0][0])
-#             height_h, height_v = int(box[2][1] - box[0][1]), img_height,
-#
-#             horiz_boxes.append([x_h, y_h, x_h + width_h, y_h + height_h])
-#             vert_boxes.append([x_v, y_v, x_v + width_v, y_v + height_v])
-#
-#             if verbose:
-#                 img =
-#             cv2.rectangle(img, (x_h, y_h), (x_h + width_h, y_h + height_h), (255, 0, 0), 1)
-#             cv2.rectangle(img, (x_v, y_v), (x_v + width_v, y_v + height_v), (0, 255, 0), 1)
+class ReconstructAndSupress:
+    def __init__(
+        self,
+        max_output_size: int = 1000,
+        iou_threshold: float = 0.1,
+        score_threshold: float = float("-inf"),
+        verbose: bool = False,
+    ):
+        self.max_output_size = max_output_size
+        self.iou_threshold = iou_threshold
+        self.score_threshold = score_threshold
+        self.verbose = verbose
+
+    @staticmethod
+    def intersection(box1: list[int], box2: list[int]) -> np.array:
+        x_min = np.maximum(box1[1], box2[1])
+        y_min = np.maximum(box1[0], box2[0])
+        x_max = np.minimum(box1[3], box2[3])
+        y_max = np.minimum(box1[2], box2[2])
+
+        return np.stack([y_min, x_min, y_max, x_max])
+
+    @staticmethod
+    def compute_iou(boxes1, boxes2):
+        # Calculate the (y_min, x_min, y_max, x_max) of the intersection
+        intersected = ReconstructAndSupress.intersection(boxes1, boxes2)
+
+        # Calculate the intersection area as dy * dx
+        intersection_area = np.maximum(0, intersected[2] - intersected[0]) * np.maximum(
+            0, intersected[3] - intersected[1]
+        )
+
+        # Calculate the area of both bounding boxes
+        area1 = (boxes1[2] - boxes1[0]) * (boxes1[3] - boxes1[1])
+        area2 = (boxes2[2] - boxes2[0]) * (boxes2[3] - boxes2[1])
+
+        # Calculate the union area
+        union_area = area1 + area2 - intersection_area
+
+        # Calculate IoU
+        iou = intersection_area / union_area
+
+        return iou
+
+    @staticmethod
+    def sort_boxes_up2down_left2right(boxes: np.array) -> np.array:
+        sorted_array = np.array(sorted(boxes, key=lambda box: (box[1], box[0])))
+        return sorted_array
+
+    def __call__(self, np_image: np.array, ocr_result: OcrResult) -> np.array:
+        img_height = np_image.shape[0]
+        img_width = np_image.shape[1]
+
+        detected_boxes = np.array(ocr_result.boxes)
+        scores = ocr_result.scores
+
+        horiz_boxes, vert_boxes = deepcopy(detected_boxes), deepcopy(detected_boxes)
+        horiz_boxes = horiz_boxes[:, ::3, ::-1].reshape(50, 4)
+        vert_boxes = vert_boxes[:, ::3, ::-1].reshape(50, 4)
+        horiz_boxes[:, 1] = 0
+        horiz_boxes[:, 3] = img_width
+
+        vert_boxes[:, 0] = 0
+        vert_boxes[:, 2] = img_height
+
+        # Apply suppresion
+        horiz_lines = tf.image.non_max_suppression(
+            horiz_boxes, scores, self.max_output_size, self.iou_threshold, self.score_threshold
+        )
+
+        vert_lines = tf.image.non_max_suppression(
+            vert_boxes, scores, self.max_output_size, self.iou_threshold, self.score_threshold
+        )
+
+        horiz_boxes = self.sort_boxes_up2down_left2right(horiz_boxes[horiz_lines])
+        vert_boxes = self.sort_boxes_up2down_left2right(vert_boxes[vert_lines])
+
+        if self.verbose:
+            img = np_image.copy()
+            img_h = VisualizeBoundingBoxes()(img, horiz_boxes)
+            Image.fromarray(img_h).show()
+
+            img_v = VisualizeBoundingBoxes()(img, vert_boxes)
+            Image.fromarray(img_v).show()
+
+            combined_image = np.minimum(img_h, img_v)
+
+            Image.fromarray(combined_image).show()
+
+        output_array = np.full((horiz_boxes.shape[0], vert_boxes.shape[0]), "", dtype="<U20")
+
+        for i in range(horiz_boxes.shape[0]):
+            for j in range(vert_boxes.shape[0]):
+                boxes_intersection = self.intersection(horiz_boxes[i], vert_boxes[j])
+                self.compute_iou(horiz_boxes[i], vert_boxes[j])
+
+                for b in range(len(detected_boxes)):
+                    the_box = [
+                        detected_boxes[b][0][1],
+                        detected_boxes[b][0][0],
+                        detected_boxes[b][2][1],
+                        detected_boxes[b][2][0],
+                    ]
+                    if self.compute_iou(the_box, boxes_intersection) >= 0.1:
+                        output_array = ocr_result.txt[b]
+
+        return output_array
 
 
 class DataLoader:
@@ -71,7 +172,7 @@ class DataLoader:
     def __init__(self, config: Config):
         self.scan_path = config.SCAN_PATH
 
-    def __call__(self) -> dict[str, list[np.array]]:
+    def __call__(self) -> dict[str, dict[Any, Any]]:
         # Get file_paths
         file_paths = self._get_pdfs_and_images(self.scan_path)
         data = {}
@@ -86,7 +187,7 @@ class DataLoader:
             else:
                 imgs = [cv2.imdecode(np.fromfile(file_path, dtype=np.uint8), cv2.IMREAD_GRAYSCALE)]
 
-            data[file_name] = imgs
+            data[file_name] = {f"page_{i}": image for i, image in enumerate(imgs)}
 
         return data
 
@@ -253,33 +354,36 @@ class ExtractGridEntries:
 
 class VisualizeBoundingBoxes:
     @staticmethod
-    def __call__(image: np.array, result) -> np.array:
+    def __call__(
+        image: np.array, boxes: list[list[int]], txts: list[str] | None = None
+    ) -> np.array:
         # Extract the bounding boxes, text, and confidence scores
-        boxes = [res[0] for res in result[0]]
-        txts = [res[1][0] for res in result[0]]
-        # scores = [res[1][1] for res in result[0]]
-
         image_boxes = image.copy()
-        image_boxes = cv2.cvtColor(image_boxes, cv2.COLOR_GRAY2RGB)
-        for box, txt in zip(boxes, txts):
+
+        # Check if RGB
+        if not (len(image.shape) == 3 and image.shape[-1] == 3):
+            image_boxes = cv2.cvtColor(image_boxes, cv2.COLOR_GRAY2RGB)
+
+        for i, box in enumerate(boxes):
             # Draw detected boxes
             cv2.rectangle(
                 image_boxes,
-                (int(box[0][0]), int(box[0][1])),
-                (int(box[2][0]), int(box[2][1])),
+                (int(box[1]), int(box[0])),
+                (int(box[3]), int(box[2])),
                 color=(0, 0, 255),
                 thickness=1,
             )
 
-            # Put the text near the bounding box
-            cv2.putText(
-                image_boxes,
-                txt,
-                (int(box[0][0]), int(box[0][1])),
-                fontFace=cv2.FONT_HERSHEY_SIMPLEX,
-                fontScale=1,
-                color=(255, 0, 0),
-                thickness=1,
-            )
+            # Put the text near the bounding box if txts is provided
+            if txts and i < len(txts):
+                cv2.putText(
+                    image_boxes,
+                    txts[i],
+                    (int(box[1]), int(box[0])),
+                    fontFace=cv2.FONT_HERSHEY_SIMPLEX,
+                    fontScale=1,
+                    color=(255, 0, 0),
+                    thickness=1,
+                )
 
         return image_boxes
