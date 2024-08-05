@@ -111,8 +111,8 @@ class ReconstructAndSupress:
         scores = ocr_result.scores
 
         horiz_boxes, vert_boxes = deepcopy(detected_boxes), deepcopy(detected_boxes)
-        horiz_boxes = horiz_boxes[:, ::3, ::-1].reshape(50, 4)
-        vert_boxes = vert_boxes[:, ::3, ::-1].reshape(50, 4)
+        horiz_boxes = horiz_boxes[:, ::2, ::-1].reshape(detected_boxes.shape[0], 4)
+        vert_boxes = vert_boxes[:, ::2, ::-1].reshape(detected_boxes.shape[0], 4)
         horiz_boxes[:, 1] = 0
         horiz_boxes[:, 3] = img_width
 
@@ -134,10 +134,7 @@ class ReconstructAndSupress:
         if self.verbose:
             img = np_image.copy()
             img_h = VisualizeBoundingBoxes()(img, horiz_boxes)
-            Image.fromarray(img_h).show()
-
             img_v = VisualizeBoundingBoxes()(img, vert_boxes)
-            Image.fromarray(img_v).show()
 
             combined_image = np.minimum(img_h, img_v)
 
@@ -158,7 +155,7 @@ class ReconstructAndSupress:
                         detected_boxes[b][2][0],
                     ]
                     if self.compute_iou(the_box, boxes_intersection) >= 0.1:
-                        output_array = ocr_result.txt[b]
+                        output_array[i][j] = ocr_result.txt[b]
 
         return output_array
 
