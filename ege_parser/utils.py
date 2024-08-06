@@ -14,9 +14,14 @@ from PIL import Image
 
 class OcrResult:
     def __init__(self, result: list[Any]):
-        self.boxes = [res[0] for res in result[0]]
+        self.boxes = self.reformat_box([res[0] for res in result[0]])
         self.txt = [res[1][0] for res in result[0]]
         self.scores = [res[1][1] for res in result[0]]
+
+    @staticmethod
+    def reformat_box(boxes: list[Any]) -> np.ndarray:
+        boxes_numpy: np.ndarray = np.array(boxes)
+        return boxes_numpy[:, [0, 2], ::-1].reshape(boxes_numpy.shape[0], 4)
 
 
 class Config:
@@ -107,12 +112,10 @@ class ReconstructAndSupress:
         img_height = np_image.shape[0]
         img_width = np_image.shape[1]
 
-        detected_boxes = np.array(ocr_result.boxes)
+        detected_boxes = ocr_result.boxes
         scores = ocr_result.scores
 
         horiz_boxes, vert_boxes = deepcopy(detected_boxes), deepcopy(detected_boxes)
-        horiz_boxes = horiz_boxes[:, ::2, ::-1].reshape(detected_boxes.shape[0], 4)
-        vert_boxes = vert_boxes[:, ::2, ::-1].reshape(detected_boxes.shape[0], 4)
         horiz_boxes[:, 1] = 0
         horiz_boxes[:, 3] = img_width
 
@@ -133,8 +136,8 @@ class ReconstructAndSupress:
 
         if self.verbose:
             img = np_image.copy()
-            img_h = VisualizeBoundingBoxes()(img, horiz_boxes)
-            img_v = VisualizeBoundingBoxes()(img, vert_boxes)
+            img_h = DrawBoundingBoxes()(img, horiz_boxes)
+            img_v = DrawBoundingBoxes()(img, vert_boxes)
 
             combined_image = np.minimum(img_h, img_v)
 
@@ -349,7 +352,7 @@ class ExtractGridEntries:
         return output
 
 
-class VisualizeBoundingBoxes:
+class DrawBoundingBoxes:
     @staticmethod
     def __call__(
         image: np.array, boxes: list[list[int]], txts: list[str] | None = None

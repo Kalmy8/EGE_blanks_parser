@@ -1,14 +1,23 @@
+from __future__ import annotations
+
 import numpy as np
 from cv2 import cv2
 
 
 class Crop:
-    def __init__(self, x_crop: tuple[int, int], y_crop: tuple[int, int]):
+    def __init__(
+        self, x_crop: tuple[int | float, int | float], y_crop: tuple[int | float, int | float]
+    ):
         self.x_crop = x_crop
         self.y_crop = y_crop
 
     def __call__(self, np_image: np.array) -> np.array:
-        return np_image[self.x_crop[0] : self.x_crop[1], self.y_crop[0] : self.y_crop[1], :]
+        min_x = int(self.x_crop[0] * np_image.shape[0] if self.x_crop[0] < 1 else self.x_crop[0])
+        max_x = int(self.x_crop[1] * np_image.shape[0] if self.x_crop[1] < 1 else self.x_crop[1])
+        min_y = int(self.y_crop[0] * np_image.shape[1] if self.y_crop[0] < 1 else self.y_crop[0])
+        max_y = int(self.y_crop[1] * np_image.shape[1] if self.y_crop[1] < 1 else self.y_crop[1])
+
+        return np_image[min_y:max_y, min_x:max_x]
 
 
 class Resize:
