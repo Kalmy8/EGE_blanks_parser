@@ -13,13 +13,24 @@ from PIL import Image
 
 
 class OcrResult:
-    def __init__(self, result: list[Any]):
-        self.boxes = self.reformat_box([res[0] for res in result[0]])
-        self.txt = [res[1][0] for res in result[0]]
-        self.scores = [res[1][1] for res in result[0]]
+    def __init__(self, np_image: np.array, result: list[Any]):
+        self.raw_image = np_image
+
+        if len(result) > 0:
+            self.boxes = self.reformat_box([res[0] for res in result[0]])
+            self.txt = [res[1][0] for res in result[0]]
+            self.scores = [res[1][1] for res in result[0]]
+            self.processed_image = DrawBoundingBoxes()(np_image, self.boxes)
+        else:
+            self.processed_image = self.raw_image
+            print("OCR result is empty, the original image is likely to be poor.")
 
     @staticmethod
     def reformat_box(boxes: list[Any]) -> np.ndarray:
+        """
+        Reformats given boxes from PaddleOcr default format ([[x_min, y_min], [x_max, y_min], [x_max, y_max], [x_min, y_max]])
+        to more verbose and convinient Tensorflow format [y_min, x_min, y_max, x_max]
+        """
         boxes_numpy: np.ndarray = np.array(boxes)
         return boxes_numpy[:, [0, 2], ::-1].reshape(boxes_numpy.shape[0], 4)
 
@@ -38,7 +49,9 @@ class Config:
             kwargs.get("TABLE_CHAR_DICT_PATH", os.getenv("TABLE_CHAR_DICT_PATH"))
         )
         self.FONT_PATH = Path(kwargs.get("FONT_PATH", os.getenv("FONT_PATH")))
-
+        self.PREPROCESSING_MODEL_PATH = Path(
+            kwargs.get("PREPROCESSING_MODEL_PATH", os.getenv("PREPROCESSING_MODEL_PATH"))
+        )
         self.validate()
 
     def validate(self):
@@ -51,6 +64,7 @@ class Config:
             "REC_CHAR_DICT_PATH",
             "TABLE_CHAR_DICT_PATH",
             "FONT_PATH",
+            "PREPROCESSING_MODEL_PATH",
         ]
         missing_vars = [var for var in required_vars if not getattr(self, var)]
         if missing_vars:
@@ -169,12 +183,12 @@ class DataLoader:
     returns a python dictionary in a {'filename_str':[extracted_image1 , extracted_image2]} format
     """
 
-    def __init__(self, config: Config):
-        self.scan_path = config.SCAN_PATH
+    def __init__(self, SCAN_PATH: Path):
+        self.scan_path = SCAN_PATH
 
-    def __call__(self) -> dict[str, dict[Any, Any]]:
+    def load_data(self) -> dict[str, dict[str, Any]]:
         # Get file_paths
-        file_paths = self._get_pdfs_and_images(self.scan_path)
+        file_paths = self.get_pdfs_and_images()
         data = {}
 
         # Convert to images
@@ -191,8 +205,7 @@ class DataLoader:
 
         return data
 
-    @staticmethod
-    def _get_pdfs_and_images(scan_path: Path) -> list[Path]:
+    def get_pdfs_and_images(self) -> list[Path]:
         """
         Extracts filepaths of all pdf/jpg/png files from specified folder
         :param scan_path: files folder path
@@ -200,13 +213,14 @@ class DataLoader:
         """
 
         extensions = [".pdf", ".png", ".jpg"]
+
         try:
-            file_paths = [file for file in scan_path.glob("*") if file.suffix in extensions]
+            file_paths = [file for file in self.scan_path.glob("*") if file.suffix in extensions]
+            return file_paths
 
-        except Exception:
-            print(f"No avaliable images or pngs found with SCAN_PATH={scan_path}\n")
-
-        return file_paths
+        except FileNotFoundError:
+            print(f"No avaliable images or pngs found with SCAN_PATH={self.scan_path}\n")
+            return []
 
     @staticmethod
     def _mine_pdf(pdf_path: Path) -> list[np.array]:
@@ -234,6 +248,15 @@ class DataLoader:
 
 
 class ExtractImageGrid:
+    """
+    Extract grid lines from the image by isolating horizontal and vertical lines.
+
+    :param horiz_kernel_divider: Divider for horizontal kernel size.
+    :param vertic_kernel_divider: Divider for vertical kernel size.
+    :param vertical_closing_iterations: Number of iterations for closing vertical lines.
+    :param horiz_closing_iterations: Number of iterations for closing horizontal lines.
+    """
+
     def __init__(
         self,
         horiz_kernel_divider: int,
@@ -273,7 +296,6 @@ class ExtractImageGrid:
         )
 
         img_final = cv2.add(verticle_lines_img, horizontal_lines_img)
-
         img_final = cv2.bitwise_not(img_final)
 
         return img_final
@@ -355,7 +377,7 @@ class ExtractGridEntries:
 class DrawBoundingBoxes:
     @staticmethod
     def __call__(
-        image: np.array, boxes: list[list[int]], txts: list[str] | None = None
+        image: np.array, boxes: list[list[int]] | np.ndarray, txts: list[str] | None = None
     ) -> np.array:
         # Extract the bounding boxes, text, and confidence scores
         image_boxes = image.copy()
