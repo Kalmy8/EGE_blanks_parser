@@ -2,20 +2,15 @@ from __future__ import annotations
 
 import os
 import pickle
-from typing import Any, cast
+from typing import cast, Any
 
 import numpy as np
-from auto_preprocessing.preprocessing_classes import (
-    MemoryModule,
-    PreprocessingConductor,
-    Preprocessor,
-    PreprocessScenario,
-)
-from auto_preprocessing.preprocessing_scenarios import SCENARIOS
 from paddleocr import PaddleOCR
-
 from ege_parser.ocr_model import get_ocr_model
 from ege_parser.utils import DataLoader
+from auto_preprocessing.preprocessing_classes import PreprocessingConductor, Preprocessor, MemoryModule, \
+    PreprocessScenario
+from auto_preprocessing.preprocessing_scenarios import SCENARIOS
 
 PREPROCESSING_CACHE_PATH = "./preprocessor_cache"
 

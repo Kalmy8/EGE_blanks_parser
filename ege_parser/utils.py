@@ -10,17 +10,44 @@ import fitz
 import numpy as np
 import tensorflow as tf
 from PIL import Image
+from dotenv import load_dotenv
 
 
 class OcrResult:
-    def __init__(self, result: list[Any]):
-        self.boxes = [res[0] for res in result[0]]
-        self.txt = [res[1][0] for res in result[0]]
-        self.scores = [res[1][1] for res in result[0]]
+    def __init__(self, np_image: np.array, result: list[Any]):
+        self.raw_image = np_image
+
+        if len(result) > 0:
+            self.boxes = self.reformat_box([res[0] for res in result[0]])
+            self.txt = [res[1][0] for res in result[0]]
+            self.scores = [res[1][1] for res in result[0]]
+            self.processed_image = DrawBoundingBoxes()(np_image, self.boxes)
+        else:
+            self.processed_image = self.raw_image
+            print("OCR result is empty, the original image is likely to be poor.")
+
+    @staticmethod
+    def reformat_box(boxes: list[Any]) -> np.ndarray:
+        """
+        Reformats given boxes from PaddleOcr default format ([[x_min, y_min], [x_max, y_min], [x_max, y_max], [x_min, y_max]])
+        to more verbose and convinient Tensorflow format [y_min, x_min, y_max, x_max]
+        """
+        boxes_numpy: np.ndarray = np.array(boxes)
+        return boxes_numpy[:, [0, 2], ::-1].reshape(boxes_numpy.shape[0], 4)
 
 
 class Config:
+    _instance = None
+
+    def __new__(cls, **kwargs):
+        if cls._instance is None:
+            cls._instance = super(Config, cls).__new__(cls, **kwargs)
+        return cls._instance
+
     def __init__(self, **kwargs):
+        # Loads required environmental variables
+        load_dotenv()
+
         self.SCAN_PATH = Path(kwargs.get("SCAN_PATH", os.getenv("SCAN_PATH")))
         self.SAVE_FOLDER = Path(kwargs.get("SAVE_FOLDER", os.getenv("SAVE_FOLDER")))
         self.DET_MODEL_DIR = Path(kwargs.get("DET_MODEL_DIR", os.getenv("DET_MODEL_DIR")))
@@ -107,12 +134,10 @@ class ReconstructAndSupress:
         img_height = np_image.shape[0]
         img_width = np_image.shape[1]
 
-        detected_boxes = np.array(ocr_result.boxes)
+        detected_boxes = ocr_result.boxes
         scores = ocr_result.scores
 
         horiz_boxes, vert_boxes = deepcopy(detected_boxes), deepcopy(detected_boxes)
-        horiz_boxes = horiz_boxes[:, ::2, ::-1].reshape(detected_boxes.shape[0], 4)
-        vert_boxes = vert_boxes[:, ::2, ::-1].reshape(detected_boxes.shape[0], 4)
         horiz_boxes[:, 1] = 0
         horiz_boxes[:, 3] = img_width
 
@@ -133,8 +158,8 @@ class ReconstructAndSupress:
 
         if self.verbose:
             img = np_image.copy()
-            img_h = VisualizeBoundingBoxes()(img, horiz_boxes)
-            img_v = VisualizeBoundingBoxes()(img, vert_boxes)
+            img_h = DrawBoundingBoxes()(img, horiz_boxes)
+            img_v = DrawBoundingBoxes()(img, vert_boxes)
 
             combined_image = np.minimum(img_h, img_v)
 
@@ -166,12 +191,12 @@ class DataLoader:
     returns a python dictionary in a {'filename_str':[extracted_image1 , extracted_image2]} format
     """
 
-    def __init__(self, config: Config):
-        self.scan_path = config.SCAN_PATH
+    def __init__(self, SCAN_PATH: Path):
+        self.scan_path = SCAN_PATH
 
-    def __call__(self) -> dict[str, dict[Any, Any]]:
+    def load_data(self) -> dict[str, dict[str, Any]]:
         # Get file_paths
-        file_paths = self._get_pdfs_and_images(self.scan_path)
+        file_paths = self.get_pdfs_and_images()
         data = {}
 
         # Convert to images
@@ -188,8 +213,7 @@ class DataLoader:
 
         return data
 
-    @staticmethod
-    def _get_pdfs_and_images(scan_path: Path) -> list[Path]:
+    def get_pdfs_and_images(self) -> list[Path]:
         """
         Extracts filepaths of all pdf/jpg/png files from specified folder
         :param scan_path: files folder path
@@ -197,13 +221,14 @@ class DataLoader:
         """
 
         extensions = [".pdf", ".png", ".jpg"]
+
         try:
-            file_paths = [file for file in scan_path.glob("*") if file.suffix in extensions]
+            file_paths = [file for file in self.scan_path.glob("*") if file.suffix in extensions]
+            return file_paths
 
-        except Exception:
-            print(f"No avaliable images or pngs found with SCAN_PATH={scan_path}\n")
-
-        return file_paths
+        except FileNotFoundError:
+            print(f"No avaliable images or pngs found with SCAN_PATH={self.scan_path}\n")
+            return []
 
     @staticmethod
     def _mine_pdf(pdf_path: Path) -> list[np.array]:
@@ -231,6 +256,15 @@ class DataLoader:
 
 
 class ExtractImageGrid:
+    """
+    Extract grid lines from the image by isolating horizontal and vertical lines.
+
+    :param horiz_kernel_divider: Divider for horizontal kernel size.
+    :param vertic_kernel_divider: Divider for vertical kernel size.
+    :param vertical_closing_iterations: Number of iterations for closing vertical lines.
+    :param horiz_closing_iterations: Number of iterations for closing horizontal lines.
+    """
+
     def __init__(
         self,
         horiz_kernel_divider: int,
@@ -270,7 +304,6 @@ class ExtractImageGrid:
         )
 
         img_final = cv2.add(verticle_lines_img, horizontal_lines_img)
-
         img_final = cv2.bitwise_not(img_final)
 
         return img_final
@@ -349,10 +382,10 @@ class ExtractGridEntries:
         return output
 
 
-class VisualizeBoundingBoxes:
+class DrawBoundingBoxes:
     @staticmethod
     def __call__(
-        image: np.array, boxes: list[list[int]], txts: list[str] | None = None
+        image: np.array, boxes: list[list[int]] | np.ndarray, txts: list[str] | None = None
     ) -> np.array:
         # Extract the bounding boxes, text, and confidence scores
         image_boxes = image.copy()

@@ -2,6 +2,19 @@ from auto_preprocessing.preprocessing_classes import PreprocessScenario
 
 SCENARIOS = []
 
+class Strategy1:
+    def __init__(self, , , , ,)
+    все вот это во
+    :
+    def __proces__
+    выполнение всего вот этого
+
+Плюсы: получаем простой json на вход, а не странный .py файл с глобальной переменной, это реально выглядит аккуратнее
++ теперь у нас нет функции eval, которая небезопасна
+и jinja тоже теперь нет
+
+Минусы: переписывать код?
+
 template_str = """
         ConvertToGray()
         BinaryThreshold(n_neighbors={{ n_neighbors }}, constant= {{constant}})
@@ -27,4 +40,4 @@ template_str2 = """
 """
 
 param_dict2 = {"n_neighbors": ["3", "5", "7", "9", "11"], "constant": ["10", "20", "30", "40"]}
-# SCENARIOS.append(PreprocessScenario(template_str2, param_dict2))
+SCENARIOS.append(PreprocessScenario(template_str2, param_dict2))

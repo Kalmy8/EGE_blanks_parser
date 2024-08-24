@@ -6,7 +6,6 @@ import json
 import pickle
 import re
 from typing import Any
-
 import matplotlib
 import numpy as np
 from cv2 import cv2
@@ -14,17 +13,13 @@ from jinja2 import Template
 from matplotlib import patches
 from matplotlib import pyplot as plt
 from paddleocr import PaddleOCR
-
 from ege_parser.utils import OcrResult
-
 
 class BestPreprocessorFinder:
     def __init__(self):
         pass
 
-    def find_best_preprocessor(
-        self, preprocessors: list[Preprocessor], np_image: np.array, ocr_engine: PaddleOCR
-    ) -> Preprocessor:
+    def find_best_preprocessor(self, preprocessors: list[Preprocessor], np_image: np.array, ocr_engine: PaddleOCR) -> Preprocessor:
         processed_images = []
 
         # Gather Images from incoming scenarios
@@ -45,14 +40,11 @@ class BestPreprocessorFinder:
 
         return preprocessors[best_image_index]
 
-
 class ParameterTuner:
     def __init__(self):
         pass
 
-    def tune(
-        self, scenarios: list[PreprocessScenario], np_image: np.array, ocr_engine: PaddleOCR
-    ) -> list[PreprocessScenario]:
+    def tune(self, scenarios: list[PreprocessScenario], np_image: np.array, ocr_engine: PaddleOCR) -> list[PreprocessScenario]:
         for scenario in scenarios:
             parameters, images = map(list, zip(*scenario.get_processed_images(np_image)))
 
@@ -68,9 +60,9 @@ class ParameterTuner:
 
         return scenarios
 
-
 class MemoryModule:
     def __init__(self):
+
         self.memory = {}
         self.best_jinja_template = None
         self.best_parameter_dict = None
@@ -105,7 +97,7 @@ class MemoryModule:
             data = {
                 "memory": self.memory,
                 "best_jinja_template": self.best_jinja_template,
-                "best_parameter_dict": self.best_parameter_dict,
+                "best_parameter_dict": self.best_parameter_dict
             }
 
             with open(filepath, "w") as f:
@@ -157,6 +149,7 @@ class MemoryModule:
 
         return new_scenarios
 
+
     @staticmethod
     def _get_hashed_image(image: np.ndarray) -> str:
         return image.tobytes().hex()
@@ -165,6 +158,7 @@ class MemoryModule:
     def _get_hashed_scenario(scenario) -> str:
         scenario_str = scenario.template + str(sorted(scenario.parameters.items()))
         return hashlib.sha256(scenario_str.encode()).hexdigest()
+
 
 
 class ImageSelector:
@@ -275,36 +269,26 @@ class ImageSelector:
 
 
 class PreprocessingConductor:
-    """
+    '''
     This class only public method get_best_preprocessor() sets class instance best_preprocessor_parameters with use of passed
     np_image, scenarios list and ocr_engine. It also remembers all seen scenarios and runs a competition to find the best one
     only if unseen scenarios are coming.
-    """
-
-    def __init__(
-        self,
-        scenario_filter: ScenarioMemoryModule,
-        tuner: ParameterTuner,
-        finder: BestPreprocessorFinder,
-    ):
+    '''
+    def __init__(self, scenario_filter: ScenarioMemoryModule, tuner : ParameterTuner, finder : BestPreprocessorFinder):
         self.tuner = tuner
         self.finder = finder
 
-    def get_best_preprocessor(
-        self, scenarios: list[PreprocessScenario], np_image: np.array, ocr_engine: PaddleOCR
-    ) -> Preprocessor:
+    def get_best_preprocessor(self, scenarios: list[PreprocessScenario], np_image: np.array, ocr_engine: PaddleOCR) -> Preprocessor:
         tuned_scenarios = self.tuner.tune(scenarios, np_image, ocr_engine)
         preprocessors = [x.best_preprocessor for x in tuned_scenarios]
         best_preprocessor = self.finder.find_best_preprocessor(preprocessors, np_image, ocr_engine)
 
         return best_preprocessor
 
-
 class Preprocessor:
-    """
+    '''
     This class is executing given jinja_templated preprocessing pipeline using given parameters dictionary
-    """
-
+    '''
     def __init__(self, jinja_templated_str: str, param_dict: dict[str, str]):
         self.template = Template(jinja_templated_str)
         self.parameters = self._validate_param_dict(jinja_templated_str, param_dict)
@@ -443,7 +427,6 @@ class Resize:
             int(np_image.shape[0] * self.scale_factor),
         )
         return cv2.resize(np_image, new_dimensions, interpolation=cv2.INTER_CUBIC)
-
 
 class GaussianSmooth:
     """
