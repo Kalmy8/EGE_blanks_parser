@@ -58,3 +58,8 @@ exclude = [
   "*.egg",
   ".venv",
   "*.toml"]
+[tool.commitizen]
+name = "cz_conventional_commits"
+tag_format = "1.0.0"
+version_type = "pep440"
+version_provider = "pep621"
