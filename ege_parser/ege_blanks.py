@@ -1,25 +1,31 @@
 from __future__ import annotations
 
 from abc import ABC
+
 import numpy as np
 from PIL import Image
+from prepCV import Preprocessor
 
-from ege_parser.ocr_model.ocr_model import retrieve_best_ocr_engine, OcrEngine
+from ege_parser.ocr_model.ocr_model import OcrEngine, retrieve_best_ocr_engine
 from ege_parser.preprocessing.run_preprocessing import retrieve_best_cached_preprocessor
 from ege_parser.utils.config import Config
 from ege_parser.utils.dataloader import DataLoader
-from ege_parser.utils.ocr_utils import ExtractImageGrid, ExtractGridEntries, ReconstructAndSupress, OcrResult
-from prepCV import Preprocessor
+from ege_parser.utils.ocr_utils import (
+    ExtractGridEntries,
+    ExtractImageGrid,
+    OcrResult,
+    ReconstructAndSupress,
+)
 
 
 class OcrTableSkeleton(ABC):
-    def __init__(self,
-                 preprocessor: Preprocessor,
-                 extractor: ExtractGridEntries,
-                 ocr_engine: OcrEngine,
-                 reconstructor: ReconstructAndSupress
-                 ):
-
+    def __init__(
+        self,
+        preprocessor: Preprocessor,
+        extractor: ExtractGridEntries,
+        ocr_engine: OcrEngine,
+        reconstructor: ReconstructAndSupress,
+    ):
         self.preprocessor = preprocessor
         self.extractor = extractor
         self.ocr_engine = ocr_engine
@@ -35,7 +41,7 @@ class OcrTableSkeleton(ABC):
     def apply_ocr(self, np_image: np.ndarray):
         return self.ocr_engine.process(np_image)
 
-    def reconstruct_table(self, np_image : np.ndarray, ocr_result: OcrResult) -> np.ndarray:
+    def reconstruct_table(self, np_image: np.ndarray, ocr_result: OcrResult) -> np.ndarray:
         return self.reconstructor.process(np_image, ocr_result)
 
     def process(self, image: np.ndarray):
@@ -55,20 +61,9 @@ class OcrTableSkeleton(ABC):
 
 class MyPipeline(OcrTableSkeleton):
     def extract_grid_entries(self, np_image):
-        image_grid = np.array(Image.open("./data/external/ege_grid.jpg"))
+        image_grid = np.array(Image.open("./utils/ege_grid.jpg"))
         return self.extractor.process(np_image, image_grid)
 
-'''
-    def process(self):
-        data = self.load_data.load_data()
-
-        # Preprocess
-        preprocessed = deepcopy(data)
-        for filename, page_list in data.items():
-            for page in page_list:
-                preprocessed[filename][page] = self.preprocessing(data[filename][page])
-
-'''
 
 def main():
     myconfig = Config()

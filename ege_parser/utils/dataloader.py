@@ -1,8 +1,11 @@
 from pathlib import Path
 from typing import Any
 
+import cv2
+import fitz
 import numpy as np
-from cv2 import cv2
+
+from ege_parser.utils.config import Config
 
 
 class DataLoader:
@@ -73,3 +76,14 @@ class DataLoader:
             extracted_images.append(np_image)
 
         return extracted_images
+
+
+def main():
+    myconfig = Config()
+    dataloader = DataLoader(myconfig.SCAN_PATH)
+    data = dataloader.load_data()
+    print(f"Successfully uploaded images from {myconfig.SCAN_PATH}:\n", data)
+
+
+if __name__ == "__main__":
+    main()

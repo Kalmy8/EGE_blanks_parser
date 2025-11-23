@@ -9,5 +9,13 @@ dependencies:
   - pip
   - pre-commit
   - commitizen
+  - dill
   - pip:
+    - PyMuPDF
     - python-dotenv
+    - fitz
+    - prepCV
+    - opencv-python
+    - paddleocr
+    - paddlepaddle
+    - tensorflow

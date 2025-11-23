@@ -1,15 +1,14 @@
 from __future__ import annotations
 
 import os
-
+from copy import deepcopy
+from typing import Any
 
 import cv2 as cv2
+import numpy as np
 import tensorflow as tf
 from PIL import Image
-from copy import deepcopy
 from PIL.Image import Image
-from typing import Any
-import numpy as np
 
 
 class OcrResult:
@@ -37,11 +36,11 @@ class OcrResult:
 
 class ReconstructAndSupress:
     def __init__(
-            self,
-            max_output_size: int = 1000,
-            iou_threshold: float = 0.1,
-            score_threshold: float = float("-inf"),
-            verbose: bool = False,
+        self,
+        max_output_size: int = 1000,
+        iou_threshold: float = 0.1,
+        score_threshold: float = float("-inf"),
+        verbose: bool = False,
     ):
         self.max_output_size = max_output_size
         self.iou_threshold = iou_threshold
@@ -138,6 +137,7 @@ class ReconstructAndSupress:
 
         return output_array
 
+
 class ExtractImageGrid:
     """
     Extract grid lines from the image by isolating horizontal and vertical lines.
@@ -149,11 +149,11 @@ class ExtractImageGrid:
     """
 
     def __init__(
-            self,
-            horiz_kernel_divider: int,
-            vertic_kernel_divider: int,
-            vertical_closing_iterations: int,
-            horiz_closing_iterations: int,
+        self,
+        horiz_kernel_divider: int,
+        vertic_kernel_divider: int,
+        vertical_closing_iterations: int,
+        horiz_closing_iterations: int,
     ):
         self.horiz_kernel_divider = horiz_kernel_divider
         self.vertic_kernel_divider = vertic_kernel_divider
@@ -199,7 +199,7 @@ class ExtractGridEntries:
 
     @staticmethod
     def _sort_contours_and_hierarchy(
-            contours: list[np.array], hierarchy: list[np.array]
+        contours: list[np.array], hierarchy: list[np.array]
     ) -> list[tuple[np.array]]:
         x_coords = []
         y_coords = []
@@ -217,9 +217,7 @@ class ExtractGridEntries:
             )
         )[:2]
 
-    def process(
-            self, np_image: np.array, image_boundaries: np.array
-    ) -> list[np.array] | np.array:
+    def process(self, np_image: np.array, image_boundaries: np.array) -> list[np.array] | np.array:
         contours, hierarchy = cv2.findContours(
             image_boundaries, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE
         )
@@ -244,8 +242,8 @@ class ExtractGridEntries:
                         -1,
                     )
 
-                roi = np_image[y + margin: y + h - margin, x + margin: x + w - margin]
-                blank_list[y + margin: y + h - margin, x + margin: x + w - margin] = roi
+                roi = np_image[y + margin : y + h - margin, x + margin : x + w - margin]
+                blank_list[y + margin : y + h - margin, x + margin : x + w - margin] = roi
                 regions_of_interest.append(roi)
 
         if self.mode == "piecewise":
@@ -268,7 +266,7 @@ class ExtractGridEntries:
 class DrawBoundingBoxes:
     @staticmethod
     def __call__(
-            image: np.array, boxes: list[list[int]] | np.ndarray, txts: list[str] | None = None
+        image: np.array, boxes: list[list[int]] | np.ndarray, txts: list[str] | None = None
     ) -> np.array:
         # Extract the bounding boxes, text, and confidence scores
         image_boxes = image.copy()
